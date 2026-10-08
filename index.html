@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base de Pesquisa de Execução</title>
+    <!-- Biblioteca XLSX para ler planilhas do Excel via JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: #1e293b;
+            margin-top: 0;
+            text-align: center;
+        }
+
+        .upload-area {
+            background-color: #eef2ff;
+            border: 2px dashed #6366f1;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        .btn-upload {
+            background-color: #4f46e5;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+
+        .btn-upload:hover {
+            background-color: #4338ca;
+        }
+
+        /* Grid com as 3 barras de pesquisa */
+        .search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .search-box {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .search-box label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px;
+            font-size: 0.95rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: #4f46e5;
+        }
+
+        /* Resumo Estatístico */
+        .stats-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1;
+            min-width: 140px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .stat-executado { background-color: #dcfce7; color: #166534; }
+        .stat-sem-intervencao { background-color: #e0f2fe; color: #0369a1; }
+        .stat-pendente { background-color: #fef3c7; color: #92400e; }
+        .stat-total { background-color: #f1f5f9; color: #334155; }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .cod-auto-highlight {
+            font-weight: 700;
+            color: #4f46e5;
+            background-color: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-executado {
+            background-color: #22c55e;
+            color: white;
+        }
+
+        .badge-sem-intervencao {
+            background-color: #0284c7;
+            color: white;
+        }
+
+        .badge-pendente {
+            background-color: #f59e0b;
+            color: white;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #94a3b8;
+            padding: 30px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Consulta de Pontos e Rodovias</h1>
+
+    <!-- Área de Upload de Planilha -->
+    <div class="upload-area">
+        <label for="excelFile" class="btn-upload">📂 Selecionar Planilha Excel</label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls">
+        <p id="fileName" style="margin-top: 10px; font-size: 0.9rem; color: #64748b;">Nenhuma planilha carregada</p>
+    </div>
+
+    <!-- Filtros de Pesquisa Separados -->
+    <div class="search-grid">
+        <div class="search-box">
+            <label for="searchCod">Pesquisar por Código (CodAuto):</label>
+            <input type="text" id="searchCod" placeholder="Ex: 1024, 001..." disabled>
+        </div>
+        <div class="search-box">
+            <label for="searchRodovia">Pesquisar por Rodovia:</label>
+            <input type="text" id="searchRodovia" placeholder="Ex: SP-330, BR-116..." disabled>
+        </div>
+        <div class="search-box">
+            <label for="searchConservacao">Pesquisar por Estado de Conservação:</label>
+            <input type="text" id="searchConservacao" placeholder="Ex: Regular, Bom, Precário..." disabled>
+        </div>
+    </div>
+
+    <!-- Resumo dos Resultados -->
+    <div class="stats-bar" id="statsBar" style="display: none;">
+        <div class="stat-card stat-total" id="statTotal">Total: 0</div>
+        <div class="stat-card stat-executado" id="statExecutado">Executados: 0</div>
+        <div class="stat-card stat-sem-intervencao" id="statSemIntervencao">Sem Intervenção: 0</div>
+        <div class="stat-card stat-pendente" id="statPendente">Pendentes: 0</div>
+    </div>
+
+    <!-- Tabela de Resultados -->
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>CodAuto</th>
+                    <th>Rodovia</th>
+                    <th>KM</th>
+                    <th>Elemento</th>
+                    <th>Sentido</th>
+                    <th>Estado de Conservação</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr>
+                    <td colspan="7" class="no-data">Carregue uma planilha para começar a pesquisar.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let baseDados = [];
+
+    // Função de normalização para ignorar acentos e espaços nas chaves das colunas
+    function normalizeKey(str) {
+        return String(str || '')
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+    }
+
+    // Leitura da Planilha do Excel
+    document.getElementById('excelFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('fileName').innerText = `Planilha carregada: ${file.name}`;
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+            // Processa e mapeia as colunas da planilha
+            baseDados = json.map(row => {
+                let codAutoVal = '-';
+                let rodoviaVal = '-';
+                let kmVal = '-';
+                let elementoVal = '-';
+                let sentidoVal = '-';
+                let conservacaoVal = '-';
+                let statusVal = 'Pendente';
+
+                for (let key in row) {
+                    const normKey = normalizeKey(key);
+                    const rawVal = row[key];
+
+                    if (normKey === 'codauto' || normKey === 'codigo' || normKey === 'cod') {
+                        codAutoVal = rawVal;
+                    } else if (normKey.includes('rodovia')) {
+                        rodoviaVal = rawVal;
+                    } else if (normKey === 'km') {
+                        kmVal = rawVal;
+                    } else if (normKey.includes('elemento')) {
+                        elementoVal = rawVal;
+                    } else if (normKey.includes('sentido')) {
+                        sentidoVal = rawVal;
+                    } else if (normKey.includes('estadoconservacao') || normKey.includes('conservacao')) {
+                        conservacaoVal = rawVal;
+                    } else if (normKey.includes('status')) {
+                        statusVal = rawVal;
+                    }
+                }
+
+                // Regra de Negócio: Se Estado de Conservação for "Regular" ou "Bom", define Status como "Sem Intervenção"
+                const conservacaoNorm = String(conservacaoVal).trim().toLowerCase();
+                if (conservacaoNorm === 'regular' || conservacaoNorm === 'bom') {
+                    statusVal = 'Sem Intervenção';
+                }
+
+                return {
+                    codAuto: codAutoVal,
+                    rodovia: rodoviaVal,
+                    km: kmVal,
+                    elemento: elementoVal,
+                    sentido: sentidoVal,
+                    conservacao: conservacaoVal,
+                    status: statusVal
+                };
+            });
+
+            // Ativa os campos de pesquisa
+            ['searchCod', 'searchRodovia', 'searchConservacao'].forEach(id => {
+                document.getElementById(id).disabled = false;
+            });
+            
+            exibirDados(baseDados);
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // Filtros combinados em tempo real
+    function filtrarDados() {
+        const codTermo = document.getElementById('searchCod').value.toLowerCase().trim();
+        const rodoviaTermo = document.getElementById('searchRodovia').value.toLowerCase().trim();
+        const conservacaoTermo = document.getElementById('searchConservacao').value.toLowerCase().trim();
+
+        const filtrados = baseDados.filter(item => {
+            const codMatch = String(item.codAuto).toLowerCase().includes(codTermo);
+            const rodoviaMatch = String(item.rodovia).toLowerCase().includes(rodoviaTermo);
+            const conservacaoMatch = String(item.conservacao).toLowerCase().includes(conservacaoTermo);
+
+            return codMatch && rodoviaMatch && conservacaoMatch;
+        });
+
+        exibirDados(filtrados);
+    }
+
+    document.getElementById('searchCod').addEventListener('input', filtrarDados);
+    document.getElementById('searchRodovia').addEventListener('input', filtrarDados);
+    document.getElementById('searchConservacao').addEventListener('input', filtrarDados);
+
+    // Função para renderizar os dados e as métricas
+    function exibirDados(dados) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        if (dados.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="no-data">Nenhum registro encontrado.</td></tr>`;
+            document.getElementById('statsBar').style.display = 'none';
+            return;
+        }
+
+        let totalExecutados = 0;
+        let totalSemIntervencao = 0;
+        let totalPendentes = 0;
+
+        dados.forEach(item => {
+            const tr = document.createElement('tr');
+            
+            const statusNorm = String(item.status).toLowerCase().trim();
+            let badgeClass = 'badge-pendente';
+
+            if (statusNorm === 'executado') {
+                totalExecutados++;
+                badgeClass = 'badge-executado';
+            } else if (statusNorm === 'sem intervenção' || statusNorm === 'sem intervencao') {
+                totalSemIntervencao++;
+                badgeClass = 'badge-sem-intervencao';
+            } else {
+                totalPendentes++;
+            }
+
+            tr.innerHTML = `
+                <td><span class="cod-auto-highlight">${item.codAuto}</span></td>
+                <td>${item.rodovia}</td>
+                <td>${item.km}</td>
+                <td>${item.elemento}</td>
+                <td>${item.sentido}</td>
+                <td>${item.conservacao}</td>
+                <td><span class="badge ${badgeClass}">${item.status}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Exibe e atualiza o painel de contadores
+        document.getElementById('statsBar').style.display = 'flex';
+        document.getElementById('statTotal').innerText = `Total: ${dados.length}`;
+        document.getElementById('statExecutado').innerText = `Executados: ${totalExecutados}`;
+        document.getElementById('statSemIntervencao').innerText = `Sem Intervenção: ${totalSemIntervencao}`;
+        document.getElementById('statPendente').innerText = `Pendentes: ${totalPendentes}`;
+    }
+</script>
+
+</body>
+</html>
